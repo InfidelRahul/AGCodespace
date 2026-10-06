@@ -15,7 +15,10 @@ android {
         versionName = "1.0.0"
     }
     buildFeatures { compose = true; buildConfig = true }
-    packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+    packaging {
+        resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        jniLibs.useLegacyPackaging = true
+    }
     val releaseKeystore = System.getenv("KEYSTORE_FILE")?.let { file(it) }
         ?: rootProject.file("release.keystore").takeIf { it.exists() }
         ?: file("release.keystore").takeIf { it.exists() }

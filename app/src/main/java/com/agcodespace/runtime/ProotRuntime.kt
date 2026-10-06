@@ -88,9 +88,20 @@ class ProotRuntime(private val context: Context) {
     val tmpDir = File(root, "tmp")
     val rootfs = File(root, "rootfs")
     val proot = File(binDir, "proot")
+    val loader = File(binDir, "loader")
     val home = File(rootfs, "home/agcodespace")
     val launchScript = File(root, "launch.sh")
     private val ready = File(root, ".ready")
+
+    fun getExecutableProot(): File {
+        val nativeLib = File(context.applicationInfo.nativeLibraryDir, "libproot.so")
+        return if (nativeLib.isFile && nativeLib.canExecute()) nativeLib else proot
+    }
+
+    fun getExecutableLoader(): File {
+        val nativeLib = File(context.applicationInfo.nativeLibraryDir, "libproot_loader.so")
+        return if (nativeLib.isFile && nativeLib.canExecute()) nativeLib else loader
+    }
 
     fun getAbi(): String {
         val supported = Build.SUPPORTED_ABIS ?: emptyArray()
@@ -117,8 +128,10 @@ class ProotRuntime(private val context: Context) {
         return if (abi == "x86_64") UBUNTU_BASE_X86_64_SIZE_BYTES else UBUNTU_BASE_ARM64_SIZE_BYTES
     }
 
-    fun isInstalled(): Boolean =
-        ready.isFile && proot.canExecute() && launchScript.canExecute() && File(rootfs, "bin/sh").canExecute() && home.isDirectory
+    fun isInstalled(): Boolean {
+        val prootExec = getExecutableProot()
+        return ready.isFile && prootExec.canExecute() && launchScript.canExecute() && File(rootfs, "bin/sh").canExecute() && home.isDirectory
+    }
 
     fun prepare(): Boolean {
         if (isInstalled()) {
@@ -183,8 +196,8 @@ class ProotRuntime(private val context: Context) {
         val assets = runCatching { context.assets.list(assetDir) ?: emptyArray() }.getOrDefault(emptyArray())
 
         for (asset in assets) {
-            val isExecutable = asset == "proot" || asset.endsWith(".so") || asset.contains(".so.")
-            val targetFile = if (asset == "proot") File(binDir, asset) else File(libDir, asset)
+            val isExecutable = asset == "proot" || asset == "loader" || asset.endsWith(".so") || asset.contains(".so.")
+            val targetFile = if (asset == "proot" || asset == "loader") File(binDir, asset) else File(libDir, asset)
 
             if (!targetFile.exists() || targetFile.length() == 0L) {
                 context.assets.open("$assetDir/$asset").use { input ->
@@ -196,20 +209,22 @@ class ProotRuntime(private val context: Context) {
                 targetFile.setReadable(true, false)
                 targetFile.setExecutable(true, false)
             }
-            // Also mirror libraries in binDir so linker can always find them
-            if (asset.endsWith(".so") || asset.contains(".so.")) {
+            // Also mirror libraries and loader in binDir so PRoot unbundled loader works
+            if (asset.endsWith(".so") || asset.contains(".so.") || asset == "loader") {
                 val binCopy = File(binDir, asset)
                 if (!binCopy.exists()) {
                     runCatching {
                         Files.copy(targetFile.toPath(), binCopy.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                        binCopy.setReadable(true, false)
                         binCopy.setExecutable(true, false)
                     }
                 }
             }
         }
 
-        check(proot.isFile && proot.canExecute()) {
-            "PRoot executable could not be extracted or made executable for ABI $abi"
+        val prootExec = getExecutableProot()
+        check(prootExec.isFile && prootExec.canExecute()) {
+            "LinuxDroid PRoot executable could not be verified for ABI $abi"
         }
     }
 
@@ -473,11 +488,15 @@ fi
         val resolvFile = File(root, "resolv.conf").absolutePath
         val hostsFile = File(root, "hosts").absolutePath
         val hostAppDir = context.filesDir.absolutePath
+        val prootExec = getExecutableProot().absolutePath
+        val loaderExec = getExecutableLoader().absolutePath
 
         val script = """
 #!/system/bin/sh
 export LD_LIBRARY_PATH="${libDir.absolutePath}:${binDir.absolutePath}:${'$'}LD_LIBRARY_PATH"
 export PROOT_TMP_DIR="${tmpDir.absolutePath}"
+export PROOT_LOADER="$loaderExec"
+export PROOT_UNBUNDLE_LOADER="${binDir.absolutePath}"
 export HOME=/home/agcodespace
 export USER=agcodespace
 export TERM=xterm-256color
@@ -492,8 +511,10 @@ if [ ! -x "${rootfs.absolutePath}/bin/bash" ]; then
   SHELL_CMD="/bin/sh"
 fi
 
+PROOT_BIN="$prootExec"
+
 if [ ${'$'}# -gt 0 ]; then
-  exec "${proot.absolutePath}" \
+  exec "${'$'}PROOT_BIN" \
     -0 \
     --link2symlink \
     -r "${rootfs.absolutePath}" \
@@ -507,7 +528,7 @@ if [ ${'$'}# -gt 0 ]; then
     -w /home/agcodespace \
     "${'$'}@"
 else
-  exec "${proot.absolutePath}" \
+  exec "${'$'}PROOT_BIN" \
     -0 \
     --link2symlink \
     -r "${rootfs.absolutePath}" \
