@@ -42,7 +42,7 @@ fun HomeScreen(nav: NavController) {
 
     LaunchedEffect(Unit) {
         if (!isInstalled) {
-            ProotRuntime.autoInstallIfNeeded(context)
+            ProotRuntime.autoInstallIfNeeded(context.applicationContext)
         }
     }
 
@@ -65,7 +65,7 @@ fun HomeScreen(nav: NavController) {
             RuntimeStatusCard(
                 status = status,
                 isInstalled = isInstalled,
-                onRetry = { ProotRuntime.autoInstallIfNeeded(context) },
+                onRetry = { ProotRuntime.autoInstallIfNeeded(context.applicationContext) },
                 onOpenTerminal = { nav.navigate("terminal") }
             )
         }
@@ -157,7 +157,8 @@ private fun RuntimeStatusCard(
                     val dl = status
                     val mbDownloaded = dl.bytesDownloaded / (1024f * 1024f)
                     val mbTotal = dl.totalBytes / (1024f * 1024f)
-                    val percent = (dl.progress * 100).toInt()
+                    val safeProgress = if (dl.progress.isNaN() || dl.progress.isInfinite()) 0f else dl.progress.coerceIn(0f, 1f)
+                    val percent = (safeProgress * 100).toInt()
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Download, contentDescription = null)
@@ -165,7 +166,7 @@ private fun RuntimeStatusCard(
                         Text("Downloading Ubuntu Linux Rootfs…", style = MaterialTheme.typography.titleMedium)
                     }
                     LinearProgressIndicator(
-                        progress = { dl.progress },
+                        progress = { safeProgress },
                         modifier = Modifier.fillMaxWidth()
                     )
                     Text(
@@ -289,15 +290,23 @@ fun TerminalScreen() {
     }
 
     DisposableEffect(Unit) {
+        val appContext = context.applicationContext
         if (!isInstalled) {
-            ProotRuntime.autoInstallIfNeeded(context)
+            ProotRuntime.autoInstallIfNeeded(appContext)
         }
-        val serviceIntent = Intent(context, TerminalService::class.java)
-        context.startForegroundService(serviceIntent)
-        context.bindService(serviceIntent, connection, Context.BIND_AUTO_CREATE)
+        val serviceIntent = Intent(appContext, TerminalService::class.java)
+        runCatching {
+            appContext.startForegroundService(serviceIntent)
+        }.onFailure {
+            runCatching { appContext.startService(serviceIntent) }
+        }
+        runCatching {
+            appContext.bindService(serviceIntent, connection, Context.BIND_AUTO_CREATE)
+        }
         onDispose {
             if (serviceBound) {
-                context.unbindService(connection)
+                runCatching { appContext.unbindService(connection) }
+                serviceBound = false
             }
         }
     }
@@ -364,7 +373,7 @@ fun TerminalScreen() {
                             terminalClient.terminalView = this
                             setTerminalViewClient(terminalClient)
                             setTextSize(14)
-                            attachSession(session)
+                            runCatching { attachSession(session) }
                         }
                     },
                     modifier = Modifier.fillMaxSize()
@@ -380,7 +389,7 @@ fun TerminalScreen() {
                         status = status,
                         isInstalled = isInstalled,
                         onRetry = {
-                            ProotRuntime.autoInstallIfNeeded(context)
+                            ProotRuntime.autoInstallIfNeeded(context.applicationContext)
                             binder?.restart()
                         },
                         onOpenTerminal = {}

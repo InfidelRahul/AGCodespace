@@ -71,9 +71,12 @@ class ProotRuntime(private val context: Context) {
                 return
             }
             if (isInstalling.compareAndSet(false, true)) {
-                CoroutineScope(Dispatchers.IO).launch {
+                CoroutineScope(Dispatchers.IO + kotlinx.coroutines.SupervisorJob()).launch {
                     try {
                         runtime.prepareInternal()
+                    } catch (e: Throwable) {
+                        Log.e(TAG, "autoInstallIfNeeded failure", e)
+                        _status.value = RuntimeStatus.Error(e.message ?: "Failed to install Linux runtime")
                     } finally {
                         isInstalling.set(false)
                     }
@@ -95,12 +98,12 @@ class ProotRuntime(private val context: Context) {
 
     fun getExecutableProot(): File {
         val nativeLib = File(context.applicationInfo.nativeLibraryDir, "libproot.so")
-        return if (nativeLib.isFile && nativeLib.canExecute()) nativeLib else proot
+        return if (nativeLib.isFile && nativeLib.length() > 0) nativeLib else proot
     }
 
     fun getExecutableLoader(): File {
         val nativeLib = File(context.applicationInfo.nativeLibraryDir, "libproot_loader.so")
-        return if (nativeLib.isFile && nativeLib.canExecute()) nativeLib else loader
+        return if (nativeLib.isFile && nativeLib.length() > 0) nativeLib else loader
     }
 
     fun getAbi(): String {
@@ -130,7 +133,10 @@ class ProotRuntime(private val context: Context) {
 
     fun isInstalled(): Boolean {
         val prootExec = getExecutableProot()
-        return ready.isFile && prootExec.canExecute() && launchScript.canExecute() && File(rootfs, "bin/sh").canExecute() && home.isDirectory
+        val hasProot = (prootExec.isFile && prootExec.length() > 0) || (proot.isFile && proot.length() > 0)
+        val hasLaunch = launchScript.isFile && launchScript.length() > 0
+        val hasSh = File(rootfs, "bin/sh").isFile || File(rootfs, "usr/bin/sh").isFile
+        return ready.isFile && hasProot && hasLaunch && hasSh && home.isDirectory
     }
 
     fun prepare(): Boolean {
@@ -279,7 +285,7 @@ class ProotRuntime(private val context: Context) {
                         val now = System.currentTimeMillis()
                         if (now - lastUpdate > 100 || bytesRead == totalBytes) {
                             lastUpdate = now
-                            val progress = if (totalBytes > 0) bytesRead.toFloat() / totalBytes else 0f
+                            val progress = if (totalBytes > 0) (bytesRead.toFloat() / totalBytes).coerceIn(0f, 1f) else 0f
                             _status.value = RuntimeStatus.Downloading(bytesRead, totalBytes, progress)
                         }
                     }
@@ -287,7 +293,11 @@ class ProotRuntime(private val context: Context) {
                 }
             }
 
-            partFile.renameTo(archive)
+            if (archive.exists()) archive.delete()
+            val renamed = partFile.renameTo(archive)
+            if (!renamed && partFile.exists()) {
+                Files.move(partFile.toPath(), archive.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            }
         } finally {
             conn.disconnect()
         }
@@ -560,16 +570,18 @@ fi
     }
 
     private fun applyMode(file: File, mode: Int) {
-        if (!file.exists()) return
-        file.setReadable(mode and 0b100100100 != 0, false)
-        file.setWritable(mode and 0b010010010 != 0, false)
-        file.setExecutable(mode and 0b001001001 != 0, false)
+        if (!file.exists() || Files.isSymbolicLink(file.toPath())) return
+        runCatching {
+            file.setReadable(mode and 0b100100100 != 0, false)
+            file.setWritable(mode and 0b010010010 != 0, false)
+            file.setExecutable(mode and 0b001001001 != 0, false)
+        }
     }
 
     private fun safePath(base: File, name: String): File {
         val normalized = name.removePrefix("/")
-        val candidate = File(base, normalized).canonicalFile
-        require(candidate.path == base.canonicalPath || candidate.path.startsWith(base.canonicalPath + File.separator)) {
+        val candidate = File(base, normalized).toPath().normalize().toFile()
+        require(candidate.path == base.path || candidate.path.startsWith(base.path + File.separator)) {
             "Unsafe rootfs path: $name"
         }
         return candidate
