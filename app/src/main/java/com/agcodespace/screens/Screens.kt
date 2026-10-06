@@ -41,6 +41,10 @@ import com.termux.view.TerminalView
 }
 @Composable private fun StatusCard(title:String, status:String) { Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { Text(title, style=MaterialTheme.typography.titleMedium); Text(status) } } }
 
+private fun openBrowser(context: Context, url: String) {
+    CustomTabsIntent.Builder().build().launchUrl(context, Uri.parse(url))
+}
+
 @Composable fun TerminalScreen() {
     val context = LocalContext.current
     var serviceBound by remember { mutableStateOf(false) }
@@ -58,12 +62,12 @@ import com.termux.view.TerminalView
     }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilledTonalButton(onClick={ binder?.session()?.write("gh auth login --web\n".toByteArray()) }) { Text("GitHub Login") }
-            FilledTonalButton(onClick={ binder?.session()?.write("gh codespace list\n".toByteArray()) }) { Text("List Codespaces") }
-            FilledTonalButton(onClick={ binder?.session()?.write("agy --remote-control --dangerously-skip-permissions\n".toByteArray()) }) { Text("Start Antigravity") }
+            FilledTonalButton(onClick={ binder?.session()?.write("gh auth login --web\n") }) { Text("GitHub Login") }
+            FilledTonalButton(onClick={ binder?.session()?.write("gh codespace list\n") }) { Text("List Codespaces") }
+            FilledTonalButton(onClick={ binder?.session()?.write("agy --remote-control --dangerously-skip-permissions\n") }) { Text("Start Antigravity") }
         }
         if (serviceBound && binder?.session() != null) {
-            AndroidView(factory={ TerminalView(context).apply { setTerminalViewClient(com.agcodespace.terminal.AgTerminalViewClient()); setTextSize(14); attachSession(binder!!.session()) } }, Modifier.fillMaxSize())
+            AndroidView(factory={ TerminalView(context, null).apply { setTerminalViewClient(com.agcodespace.terminal.AgTerminalViewClient()); setTextSize(14); attachSession(binder!!.session()) } }, modifier=Modifier.fillMaxSize())
         } else {
             Box(Modifier.fillMaxSize(), contentAlignment=androidx.compose.ui.Alignment.Center) { Text("Starting Linux session…") }
         }
@@ -88,7 +92,7 @@ import com.termux.view.TerminalView
                 )
             }
         } else {
-            AndroidView(factory={ AntigravityWebView(context){ openBrowser(context,it) } }, update={ it.open(url) }, Modifier.fillMaxSize())
+            AndroidView(factory={ AntigravityWebView(context){ openBrowser(context,it) } }, modifier=Modifier.fillMaxSize(), update={ it.open(url) })
         }
     }
 }

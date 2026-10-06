@@ -29,7 +29,7 @@ class TerminalService : Service() {
             Notification.Builder(this, "terminal")
                 .setContentTitle("AGCodespace")
                 .setContentText("Linux terminal session running")
-                .setSmallIcon(android.R.drawable.stat_sys_terminal)
+                .setSmallIcon(android.R.drawable.stat_notify_sync)
                 .build()
         )
         worker.execute {

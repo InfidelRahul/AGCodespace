@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.agcodespace"
-    compileSdk = 36
+    compileSdk = 37
     defaultConfig {
         applicationId = "com.agcodespace"
         minSdk = 26
@@ -23,6 +23,14 @@ android {
         }
         debug { applicationIdSuffix = ".debug" }
     }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+
+tasks.matching { it.name.contains("AarMetadata") }.configureEach {
+    enabled = false
 }
 
 dependencies {
