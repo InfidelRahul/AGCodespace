@@ -116,7 +116,7 @@ jobs:
         fi
         
         echo "=== Verifying APK Signature for $APK_PATH ==="
-        APKSIGNER=$(find "$ANDROID_SDK_ROOT/build-tools" -name apksigner | sort -V | tail -n 1)
+        APKSIGNER=$(find "${ANDROID_SDK_ROOT:-$ANDROID_HOME}/build-tools" -name apksigner | sort -V | tail -n 1)
         "$APKSIGNER" verify --verbose "$APK_PATH"
         
         echo "=== APK File Details ==="
