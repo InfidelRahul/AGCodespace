@@ -16,9 +16,36 @@ android {
     }
     buildFeatures { compose = true; buildConfig = true }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+    val releaseKeystore = System.getenv("KEYSTORE_FILE")?.let { file(it) }
+        ?: rootProject.file("release.keystore").takeIf { it.exists() }
+        ?: file("release.keystore").takeIf { it.exists() }
+
+    val keystorePassword = System.getenv("KEYSTORE_PASSWORD")?.takeIf { it.isNotBlank() && it != "true" } ?: "antigravitymobile123"
+    val keyAliasValue = System.getenv("KEY_ALIAS")?.takeIf { it.isNotBlank() && it != "true" } ?: "antigravitymobile"
+    val keyPasswordValue = System.getenv("KEY_PASSWORD")?.takeIf { it.isNotBlank() && it != "true" } ?: "antigravitymobile123"
+    val releaseSigningReady = releaseKeystore != null &&
+        releaseKeystore.exists() &&
+        !keystorePassword.isNullOrBlank() &&
+        !keyAliasValue.isNullOrBlank() &&
+        !keyPasswordValue.isNullOrBlank()
+
+    signingConfigs {
+        create("release") {
+            if (releaseSigningReady) {
+                storeFile = releaseKeystore
+                storePassword = keystorePassword
+                keyAlias = keyAliasValue
+                keyPassword = keyPasswordValue
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
+            if (releaseSigningReady) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
         debug { applicationIdSuffix = ".debug" }
