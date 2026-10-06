@@ -1,0 +1,3 @@
+-keep class com.agcodespace.** { *; }
+-keep class com.termux.** { *; }
+-keepclasseswithmembers,includedescriptorclasses class * { native <methods>; }
