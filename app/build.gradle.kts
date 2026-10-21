@@ -4,85 +4,64 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val releaseKeystorePath = providers.environmentVariable("AGCODESPACE_KEYSTORE_PATH").orNull
+val releaseStorePassword = providers.environmentVariable("AGCODESPACE_KEYSTORE_PASSWORD").orNull
+val releaseKeyAlias = providers.environmentVariable("AGCODESPACE_KEY_ALIAS").orNull
+val releaseKeyPassword = providers.environmentVariable("AGCODESPACE_KEY_PASSWORD").orNull
+
 android {
-    namespace = "com.agcodespace"
-    compileSdk = 37
+    namespace = "app.agcodespace"
+    compileSdk = 36
+    ndkVersion = "30.0.16138531"
     defaultConfig {
-        applicationId = "com.agcodespace"
-        minSdk = 26
+        applicationId = "app.agcodespace"
+        minSdk = 28
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.0.0"
+        versionCode = 1
+        versionName = "0.1.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
-    buildFeatures { compose = true; buildConfig = true }
-    packaging {
-        resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
-        jniLibs.useLegacyPackaging = true
-    }
-    val releaseKeystore = System.getenv("KEYSTORE_FILE")?.let { file(it) }
-        ?: rootProject.file("release.keystore").takeIf { it.exists() }
-        ?: file("release.keystore").takeIf { it.exists() }
-
-    val keystorePassword = System.getenv("KEYSTORE_PASSWORD")?.takeIf { it.isNotBlank() && it != "true" } ?: "antigravitymobile123"
-    val keyAliasValue = System.getenv("KEY_ALIAS")?.takeIf { it.isNotBlank() && it != "true" } ?: "antigravitymobile"
-    val keyPasswordValue = System.getenv("KEY_PASSWORD")?.takeIf { it.isNotBlank() && it != "true" } ?: "antigravitymobile123"
-    val releaseSigningReady = releaseKeystore != null &&
-        releaseKeystore.exists() &&
-        !keystorePassword.isNullOrBlank() &&
-        !keyAliasValue.isNullOrBlank() &&
-        !keyPasswordValue.isNullOrBlank()
-
     signingConfigs {
-        create("release") {
-            if (releaseSigningReady) {
-                storeFile = releaseKeystore
-                storePassword = keystorePassword
-                keyAlias = keyAliasValue
-                keyPassword = keyPasswordValue
+        if (!releaseKeystorePath.isNullOrBlank() && !releaseStorePassword.isNullOrBlank() && !releaseKeyAlias.isNullOrBlank() && !releaseKeyPassword.isNullOrBlank()) {
+            create("playRelease") {
+                storeFile = file(releaseKeystorePath!!)
+                storePassword = releaseStorePassword!!
+                keyAlias = releaseKeyAlias!!
+                keyPassword = releaseKeyPassword!!
             }
         }
     }
-
+    val playReleaseSigning = signingConfigs.findByName("playRelease")
     buildTypes {
-        release {
-            isMinifyEnabled = true
-            if (releaseSigningReady) {
-                signingConfig = signingConfigs.getByName("release")
-            }
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-        }
         debug { applicationIdSuffix = ".debug" }
+        release {
+            isMinifyEnabled = false
+            if (playReleaseSigning != null) signingConfig = playReleaseSigning
+        }
     }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_21
-        targetCompatibility = JavaVersion.VERSION_21
+    compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
+    kotlinOptions { jvmTarget = "17" }
+    buildFeatures { compose = true }
+    externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" } }
+    ndk { abiFilters += listOf("arm64-v8a") }
+    packaging {
+        jniLibs.useLegacyPackaging = true
+        resources.excludes += setOf("META-INF/AL2.0", "META-INF/LGPL2.1")
     }
-}
-
-kotlin {
-    jvmToolchain(21)
-}
-
-tasks.matching { it.name.contains("AarMetadata") }.configureEach {
-    enabled = false
 }
 
 dependencies {
-    implementation(platform("androidx.compose:compose-bom:2026.09.00"))
-    implementation("androidx.activity:activity-compose:1.11.0")
+    val composeBom = platform("androidx.compose:compose-bom:2025.06.01")
+    implementation(composeBom)
+    implementation("androidx.activity:activity-compose:1.10.1")
+    implementation("androidx.core:core-ktx:1.16.0")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
-    implementation("androidx.navigation:navigation-compose:2.9.5")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.4")
-    implementation("androidx.browser:browser:1.9.0")
-    implementation("androidx.webkit:webkit:1.15.0")
-    implementation("androidx.security:security-crypto:1.1.0-alpha06")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
-    implementation("com.termux.termux-app:terminal-view:0.118.0")
-    implementation("com.google.guava:listenablefuture:9999.0-empty-to-avoid-conflict-with-guava")
-    implementation("org.apache.commons:commons-compress:1.28.0")
-    implementation("org.tukaani:xz:1.10")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.1")
     debugImplementation("androidx.compose.ui:ui-tooling")
+    implementation("org.apache.commons:commons-compress:1.27.1")
+    testImplementation("junit:junit:4.13.2")
 }

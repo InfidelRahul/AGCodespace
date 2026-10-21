@@ -1,58 +1,36 @@
 # AGCodespace
 
-AGCodespace is an Android-native development client for a real Linux userspace under PRoot, GitHub Codespaces over the official GitHub CLI/SSH flow, and Antigravity CLI Remote Control.
+AGCodespace is an Android app project for a persistent, rootless Ubuntu ARM64 userspace driven by the LinuxDroidapp PRoot runtime. The project includes a Compose-based mobile UI, a JNI POSIX PTY bridge, Ubuntu Base download/checksum/extraction, PRoot process launch configuration, and a GitHub Actions build pipeline.
 
-## Implemented architecture
+## Main capabilities in this source tree
 
-- Real Android foreground service owns the terminal process so an interactive session can survive activity recreation/backgrounding better than an activity-only PTY.
-- Full terminal emulation/input is provided by the Termux `terminal-view`/`terminal-emulator` libraries; this is not a fake terminal and is designed for ANSI/VT applications such as `nano` and `vim`. 
-- Linux commands execute through an app-private PRoot rootfs. The runtime layout is `files/linux/bin/proot` + `files/linux/rootfs`.
-- PRoot integration is intentionally isolated in `ProotRuntime`; the release runtime must be produced from the requested `LinuxDroidapp/proot` fork at a pinned commit and packaged for every supported ABI.
-- GitHub CLI commands use the official `gh auth login --web`, `gh codespace list`, `gh codespace create`, and `gh codespace ssh -c ...` flows. GitHub documents `gh codespace ssh` as the supported command-shell connection path. 
-- Antigravity starts with the official interactive `agy --remote-control` model. Remote Control remains alive for the lifetime of the CLI process, so AGCodespace does not kill the terminal after discovering the URL. 
-- URLs appearing in the live terminal transcript are detected. Authentication URLs are offered to Android Custom Tabs; a final Antigravity Remote Control URL is routed to the in-app WebView.
-- WebView blocks local file/content access and sends unrelated navigation back to the system browser.
+- Android ARM64 app (minimum API 28) with workspace, terminal, files and diagnostics screens.
+- Ubuntu Base 26.04 ARM64 bootstrap from the official Ubuntu image directory.
+- Downloads and verifies the rootfs archive against Ubuntu's published `SHA256SUMS` before extraction; extracts into private persistent app storage and rejects unsafe archive paths/symlinks.
+- Native POSIX PTY using `forkpty`, nonblocking output reads, streamed keyboard input, resize ioctl, and process termination.
+- Compact VT screen model with cursor addressing, erase, scroll and alternate-screen basics, plus a touch-oriented modifier/key bar.
+- Basic navigable rootfs file browser.
+- A user-started special-use foreground service to help keep the PTY/SSH process alive while the app is backgrounded (requires Play Console policy review and device testing).
+- Remote workflow controls for GitHub CLI authentication, Codespaces SSH, official Antigravity CLI installation, and opening URLs detected in terminal output.
+- PRoot runtime is built from the pinned `LinuxDroidapp/proot` source revision in CI, rather than bundling an unrelated prebuilt executable.
+- GitHub Actions builds and checks the ARM64 APK, generates checksums, and uploads the artifact with `retention-days: 1`.
 
-## Runtime packaging contract
+## Build through GitHub Actions
 
-The Android application cannot legally or technically invent a Linux distribution. The release bundle must contain a tested guest filesystem and the exact PRoot executable built from the requested source. The app downloads the exact Ubuntu Base 26.04.1 ARM64 archive on first initialization, verifies its published SHA-256, extracts it privately, and then bootstraps the guest. The app refuses to start the Linux terminal if the fixed archive cannot be verified or the packaged PRoot binary is unavailable.
+Push this project to a GitHub repository and run **Build AGCodespace Android app** from Actions. CI installs Java 21, Android API 36, NDK 30.0.16138531 and CMake 3.22.1, builds PRoot from the pinned source, packages its native carrier libraries, runs unit tests, builds the release variant and uploads the artifact for one day.
 
-Expected paths inside the app's private files directory:
+For a Google Play upload, configure a private signing keystore and set these environment variables in your secure build environment: `AGCODESPACE_KEYSTORE_PATH`, `AGCODESPACE_KEYSTORE_PASSWORD`, `AGCODESPACE_KEY_ALIAS`, and `AGCODESPACE_KEY_PASSWORD`. Never commit the keystore or passwords. Without those values, Gradle produces an unsigned release APK that is useful for validation but cannot be uploaded to Play Console as a release.
 
-```
-files/linux/bin/proot
-files/linux/rootfs/bin/sh
-files/linux/rootfs/bin/bash
-files/linux/rootfs/usr/bin/ssh
-files/linux/rootfs/usr/bin/gh
-files/linux/rootfs/home/agcodespace/.local/bin/agy
-```
+## Important engineering status
 
-The rootfs source is fixed to Ubuntu Base 26.04.1 ARM64:
-`https://cdimage.ubuntu.com/ubuntu-base/releases/resolute/release/ubuntu-base-26.04.1-base-arm64.tar.gz`
-SHA-256: `5a1906794ced63a71a8119c3f211ef5f0bbe0a243001b4bbd41fdf80c5b219fd`.
+This is an actively implemented engineering build, not yet a verified Play Store release. The source includes a real PTY and rootfs installer, but the current Compose terminal output surface is not a complete VT100/xterm-compatible renderer. Full-screen terminal applications such as `nano` and `vim`, alternate-screen handling, cursor movement, ANSI color rendering, terminal resize propagation, long-running background session supervision, and device-level validation still need to be completed before advertising production readiness. The native runtime is assembled by CI, so a plain local build without the workflow's PRoot packaging step does not contain the PRoot runtime.
 
-The rootfs should include OpenSSH, GitHub CLI, CA certificates, bash, coreutils, tar, xz, gzip, procps and any packages required by the Antigravity CLI. Secret Service/D-Bus is optional and must not block the terminal: Antigravity authentication failures are surfaced to the UI instead of causing a global startup timeout.
+PRoot is a userspace compatibility layer, not a virtual machine or a real root environment. Android kernel policy may restrict some Linux behaviors, including systemd/PID 1, privileged mounts, kernel modules, nested containers, and some Secret Service/D-Bus use cases.
 
-## GitHub/Codespaces flow
+## Third-party components
 
-1. Open Terminal.
-2. Tap **GitHub Login** or type `gh auth login --web`.
-3. AGCodespace opens detected authentication URLs in Android's browser/custom tab while the real CLI remains attached to the PTY.
-4. Run `gh codespace list` or create a Codespace with `gh codespace create -r owner/repo`.
-5. Connect using `gh codespace ssh -c NAME`.
-6. Inside the Codespace run `agy --remote-control --dangerously-skip-permissions`.
-7. Complete Antigravity's interactive authentication in the terminal/browser flow.
-8. AGCodespace detects the final Remote Control URL and loads it in the Antigravity screen.
+- PRoot source: `https://github.com/LinuxDroidapp/proot` (pinned commit is recorded in `.github/workflows/build-release-apk.yml`; see its license and notices before redistribution).
+- Ubuntu Base ARM64: `https://cdimages.ubuntu.com/cdimage/ubuntu-base/releases/resolute/release/`.
+- Apache Commons Compress is used for safe tar extraction; see its Apache-2.0 license.
 
-## Security
-
-- No GitHub or Google password is stored by AGCodespace.
-- Browser authentication stays in Android's browser/custom-tab surface.
-- Remote Control URLs are treated as session secrets and are not logged by the app.
-- No root permission is requested.
-- PRoot is userspace isolation, not a security sandbox; the app's privacy/security model must not claim otherwise.
-
-## Release gate
-
-A Play Store release still requires device validation of the exact runtime artifacts, Android release signing, Play Console Data Safety/privacy declarations, and tests on supported ABIs/Android versions. This repository contains the application source and runtime contract; it does not silently fabricate unverified PRoot/rootfs binaries.
+Review all applicable notices and licensing obligations before publishing.
