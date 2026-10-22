@@ -105,7 +105,7 @@ class UbuntuInstaller(private val context: Context) {
             }
             if (!File(staging, "bin").exists() || !File(staging, "etc/os-release").exists()) throw IllegalStateException("The archive extracted but does not look like a valid Ubuntu root filesystem.")
             val resolvConf = File(staging, "etc/resolv.conf")
-            if (Files.isSymbolicLink(resolvConf.toPath())) android.system.Os.unlink(resolvConf.path)
+            if (Files.isSymbolicLink(resolvConf.toPath())) Files.delete(resolvConf.toPath())
             resolvConf.writeText("nameserver 1.1.1.1\nnameserver 8.8.8.8\n")
             File(staging, "root").mkdirs()
             File(staging, ".agcodespace-installed").writeText("archive=$ARCHIVE_URL\nsha256=$actual\n")

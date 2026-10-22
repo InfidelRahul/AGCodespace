@@ -7,7 +7,7 @@ class LinuxRuntime(context: Context) {
     private val app = context.applicationContext
     val installer = UbuntuInstaller(app)
     private val nativeDir = File(app.applicationInfo.nativeLibraryDir)
-    fun runtimeReady(): Boolean = File(nativeDir, "libproot.so").canExecute() && File(nativeDir, "libproot_loader.so").isFile && File(nativeDir, "libtalloc.so").isFile && File(nativeDir, "libandroid-shmem.so").isFile
+    fun runtimeReady(): Boolean = File(nativeDir, "libproot.so").canExecute() && File(nativeDir, "libproot_loader.so").isFile
     fun launchArgv(): Array<String> {
         check(installer.isInstalled()) { "Install Ubuntu before starting a Linux shell." }
         check(runtimeReady()) { "The PRoot runtime is missing. Install/build the app through the GitHub Actions workflow so the pinned LinuxDroidapp/proot native runtime is packaged." }

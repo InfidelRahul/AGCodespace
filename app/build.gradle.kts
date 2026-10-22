@@ -4,15 +4,15 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-val releaseKeystorePath = providers.environmentVariable("AGCODESPACE_KEYSTORE_PATH").orNull
-val releaseStorePassword = providers.environmentVariable("AGCODESPACE_KEYSTORE_PASSWORD").orNull
-val releaseKeyAlias = providers.environmentVariable("AGCODESPACE_KEY_ALIAS").orNull
-val releaseKeyPassword = providers.environmentVariable("AGCODESPACE_KEY_PASSWORD").orNull
-
 android {
     namespace = "app.agcodespace"
     compileSdk = 36
-    ndkVersion = "30.0.16138531"
+    val ndkEnv = System.getenv("ANDROID_NDK_VERSION")
+    val sdkRoot = System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT")
+    val localNdks = if (sdkRoot != null) file("$sdkRoot/ndk").listFiles()?.map { it.name } else null
+    val localNdk = localNdks?.firstOrNull { it.startsWith("30.0.") }
+    ndkVersion = ndkEnv ?: localNdk ?: "30.0.16138531"
+
     defaultConfig {
         applicationId = "app.agcodespace"
         minSdk = 28
@@ -20,34 +20,64 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
     }
+
+    val releaseKeystorePath = System.getenv("AGCODESPACE_KEYSTORE_PATH")
+    val releaseStorePassword = System.getenv("AGCODESPACE_KEYSTORE_PASSWORD")
+    val releaseKeyAlias = System.getenv("AGCODESPACE_KEY_ALIAS")
+    val releaseKeyPassword = System.getenv("AGCODESPACE_KEY_PASSWORD")
+
     signingConfigs {
         if (!releaseKeystorePath.isNullOrBlank() && !releaseStorePassword.isNullOrBlank() && !releaseKeyAlias.isNullOrBlank() && !releaseKeyPassword.isNullOrBlank()) {
             create("playRelease") {
-                storeFile = file(releaseKeystorePath!!)
-                storePassword = releaseStorePassword!!
-                keyAlias = releaseKeyAlias!!
-                keyPassword = releaseKeyPassword!!
+                storeFile = file(releaseKeystorePath)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
             }
         }
     }
+
     val playReleaseSigning = signingConfigs.findByName("playRelease")
     buildTypes {
-        debug { applicationIdSuffix = ".debug" }
+        debug {
+            applicationIdSuffix = ".debug"
+        }
         release {
             isMinifyEnabled = false
-            if (playReleaseSigning != null) signingConfig = playReleaseSigning
+            if (playReleaseSigning != null) {
+                signingConfig = playReleaseSigning
+            }
         }
     }
-    compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
-    kotlinOptions { jvmTarget = "17" }
-    buildFeatures { compose = true }
-    externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" } }
-    ndk { abiFilters += listOf("arm64-v8a") }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
+    }
+
+    buildFeatures {
+        compose = true
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
+
     packaging {
         jniLibs.useLegacyPackaging = true
         resources.excludes += setOf("META-INF/AL2.0", "META-INF/LGPL2.1")
     }
+}
+
+kotlin {
+    jvmToolchain(21)
 }
 
 dependencies {

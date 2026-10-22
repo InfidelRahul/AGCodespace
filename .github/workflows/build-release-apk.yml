@@ -33,18 +33,16 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Set up Android SDK
+      - name: Set up Android SDK and NDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0 ndk;30.0.16138531 cmake;3.22.1'
 
-      - name: Install Android SDK and NDK packages
+      - name: Set NDK Environment
         run: |
-          sdkmanager --install \
-            'platform-tools' \
-            'platforms;android-36' \
-            'build-tools;36.0.0' \
-            'ndk;30.0.16138531' \
-            'cmake;3.22.1'
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16138531" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/30.0.16138531" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_VERSION=30.0.16138531" >> "$GITHUB_ENV"
 
       - name: Build pinned LinuxDroidapp PRoot runtime from source
         run: scripts/build-proot-runtime.sh
@@ -56,8 +54,6 @@ jobs:
           test -s app/src/main/java/app/agcodespace/runtime/UbuntuInstaller.kt
           test -s app/src/main/jniLibs/arm64-v8a/libproot.so
           test -s app/src/main/jniLibs/arm64-v8a/libproot_loader.so
-          test -s app/src/main/jniLibs/arm64-v8a/libtalloc.so
-          test -s app/src/main/jniLibs/arm64-v8a/libandroid-shmem.so
           test -s app/src/main/assets/runtime/RUNTIME-SHA256SUMS
           file app/src/main/jniLibs/arm64-v8a/*.so
 

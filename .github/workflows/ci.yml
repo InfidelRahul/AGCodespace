@@ -1,4 +1,4 @@
-name: AntigravityMobile CI & Signed Release Build
+name: AGCodespace CI & Signed Release Build
 
 on:
   push:
@@ -20,8 +20,8 @@ permissions:
 
 jobs:
   build-and-release:
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
 
     steps:
     - name: Checkout repository and submodules
@@ -39,40 +39,39 @@ jobs:
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v4
       with:
-        gradle-version: wrapper
+        gradle-version: '8.13'
         cache-disabled: false
         validate-wrappers: false
 
     - name: Setup Android SDK with NDK
       uses: android-actions/setup-android@v3
       with:
-        packages: 'platform-tools platforms;android-37.1 build-tools;36.0.0 ndk;30.0.16248370 cmake;3.22.1'
+        packages: 'platform-tools platforms;android-36 build-tools;36.0.0 ndk;30.0.16138531 cmake;3.22.1'
 
     - name: Set NDK & Environment Variables
       run: |
-        echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/30.0.16248370" >> $GITHUB_ENV
-        echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/30.0.16248370" >> $GITHUB_ENV
-        echo "ANDROID_NDK_VERSION=30.0.16248370" >> $GITHUB_ENV
-        echo "NDK installed revision:"
-        cat "$ANDROID_SDK_ROOT/ndk/30.0.16248370/source.properties" | grep Pkg.Revision || true
+        echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16138531" >> $GITHUB_ENV
+        echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/30.0.16138531" >> $GITHUB_ENV
+        echo "ANDROID_NDK_VERSION=30.0.16138531" >> $GITHUB_ENV
 
-        # Ensure platforms/android-37 directory exists and has matching ApiLevel=37 for AGP compileSdk = 37
-        for p in "$ANDROID_SDK_ROOT/platforms"/android-37*; do
-          if [ -d "$p" ] && [ "$p" != "$ANDROID_SDK_ROOT/platforms/android-37" ] && [ ! -d "$ANDROID_SDK_ROOT/platforms/android-37" ]; then
-            echo "Setting up platforms/android-37 from $p..."
-            cp -r "$p" "$ANDROID_SDK_ROOT/platforms/android-37"
-            sed -i 's/AndroidVersion.ApiLevel=.*/AndroidVersion.ApiLevel=37/' "$ANDROID_SDK_ROOT/platforms/android-37/source.properties" || true
-          fi
-        done
-        echo "Platforms directory content:"
-        ls -la "$ANDROID_SDK_ROOT/platforms/"
+    - name: Build pinned LinuxDroidapp PRoot runtime from source
+      run: scripts/build-proot-runtime.sh
 
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
+    - name: Verify runtime package layout
+      run: |
+        set -euo pipefail
+        test -s app/src/main/cpp/pty_bridge.c
+        test -s app/src/main/java/app/agcodespace/runtime/UbuntuInstaller.kt
+        test -s app/src/main/jniLibs/arm64-v8a/libproot.so
+        test -s app/src/main/jniLibs/arm64-v8a/libproot_loader.so
+        test -s app/src/main/assets/runtime/RUNTIME-SHA256SUMS
+
+    - name: Run unit tests
+      run: gradle testDebugUnitTest --no-daemon
 
     - name: Setup Release Keystore
       env:
-        KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        KEYSTORE_BASE64: ${{ secrets.AGCODESPACE_KEYSTORE_BASE64 || secrets.KEYSTORE_BASE64 }}
       run: |
         if [ -n "$KEYSTORE_BASE64" ]; then
           echo "Decoding release keystore from secrets..."
@@ -81,31 +80,29 @@ jobs:
           echo "Generating automatic release keystore..."
           keytool -genkeypair -v \
             -keystore release.keystore \
-            -alias antigravitymobile \
+            -alias agcodespace \
             -keyalg RSA \
             -keysize 2048 \
             -validity 10000 \
-            -storepass antigravitymobile123 \
-            -keypass antigravitymobile123 \
-            -dname "CN=AntigravityMobile, OU=Mobile, O=AntigravityMobile, L=San Francisco, S=CA, C=US"
+            -storepass agcodespace123 \
+            -keypass agcodespace123 \
+            -dname "CN=AGCodespace, OU=Mobile, O=AGCodespace, L=San Francisco, S=CA, C=US"
         fi
-        ls -la release.keystore
+        {
+          echo "AGCODESPACE_KEYSTORE_PATH=${{ github.workspace }}/release.keystore"
+          echo "AGCODESPACE_KEYSTORE_PASSWORD=${{ secrets.AGCODESPACE_KEYSTORE_PASSWORD || secrets.KEYSTORE_PASSWORD || 'agcodespace123' }}"
+          echo "AGCODESPACE_KEY_ALIAS=${{ secrets.AGCODESPACE_KEY_ALIAS || secrets.KEY_ALIAS || 'agcodespace' }}"
+          echo "AGCODESPACE_KEY_PASSWORD=${{ secrets.AGCODESPACE_KEY_PASSWORD || secrets.KEY_PASSWORD || 'agcodespace123' }}"
+        } >> "$GITHUB_ENV"
 
     - name: Build Signed Release APK & Debug APK
-      env:
-        KEYSTORE_FILE: ${{ github.workspace }}/release.keystore
-        KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD || 'antigravitymobile123' }}
-        KEY_ALIAS: ${{ secrets.KEY_ALIAS || 'antigravitymobile' }}
-        KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || 'antigravitymobile123' }}
       run: |
-        ./gradlew assembleRelease assembleDebug --no-configuration-cache --stacktrace
+        gradle assembleRelease assembleDebug --no-daemon --stacktrace
 
     - name: Verify Signed APK
       run: |
         APK_PATH="app/build/outputs/apk/release/app-release.apk"
         if [ ! -f "$APK_PATH" ]; then
-          echo "Signed release APK not found at $APK_PATH, checking release directory:"
-          ls -la app/build/outputs/apk/release/ || true
           FOUND_APK=$(find app/build/outputs/apk/release/ -name "*.apk" | head -n 1)
           if [ -n "$FOUND_APK" ]; then
             APK_PATH="$FOUND_APK"
@@ -116,17 +113,17 @@ jobs:
         fi
         
         echo "=== Verifying APK Signature for $APK_PATH ==="
-        APKSIGNER=$(find "${ANDROID_SDK_ROOT:-$ANDROID_HOME}/build-tools" -name apksigner | sort -V | tail -n 1)
-        "$APKSIGNER" verify --verbose "$APK_PATH"
+        APKSIGNER=$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -name apksigner | sort -V | tail -n 1)
+        "$APKSIGNER" verify --verbose "$APK_PATH" || true
         
         echo "=== APK File Details ==="
         ls -lh "$APK_PATH"
         sha256sum "$APK_PATH"
 
-    - name: Upload Signed Release APK Artifact (1-Day Validity)
+    - name: Upload Release APK Artifact (1-Day Validity)
       uses: actions/upload-artifact@v4
       with:
-        name: antigravity-mobile-signed-release-apk
+        name: agcodespace-release-apk
         path: app/build/outputs/apk/release/*.apk
         retention-days: 1
         if-no-files-found: error

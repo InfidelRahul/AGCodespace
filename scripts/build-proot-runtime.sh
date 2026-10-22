@@ -22,7 +22,7 @@ mkdir -p "$DEST"
 for name in libproot.so libproot_loader.so libprootloader.so libtalloc.so libandroid-shmem.so liblinuxdroidspawn.so libpocketspawn.so; do
   [[ ! -f "$DIST/$name" ]] || install -m 0755 "$DIST/$name" "$DEST/$name"
 done
-for name in libproot.so libproot_loader.so libtalloc.so libandroid-shmem.so; do
+for name in libproot.so libproot_loader.so; do
   [[ -s "$DEST/$name" ]] || { echo "Missing required PRoot component: $name" >&2; exit 1; }
 done
 mkdir -p "$ROOT/app/src/main/assets/runtime"

@@ -98,9 +98,9 @@ private fun WorkspaceApp() {
         try {
             val argv = runtime.launchArgv()
             runtime.configureEnvironment(pty)
-            val result = vtScreen.reset()
+            vtScreen.reset()
             terminalScreen = vtScreen.render()
-            pty.start(argv, runtime.installer.rootfs.absolutePath, 48, 24)
+            val result = pty.start(argv, runtime.installer.rootfs.absolutePath, 48, 24)
             if (result < 0) throw IllegalStateException("PTY could not start (native error $result)")
             terminalRunning = true
             TerminalSessionService.start(context)
