@@ -74,6 +74,10 @@ android {
         jniLibs.useLegacyPackaging = true
         resources.excludes += setOf("META-INF/AL2.0", "META-INF/LGPL2.1")
     }
+
+    androidResources {
+        noCompress += listOf("gz", "tgz")
+    }
 }
 
 kotlin {

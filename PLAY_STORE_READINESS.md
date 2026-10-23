@@ -4,7 +4,7 @@ This checklist is intentionally specific. Do not publish until every required ga
 
 - [x] Native POSIX PTY implementation (forkpty, read/write, resize ioctl, signal termination).
 - [x] Ubuntu ARM64 installer with official SHA-256 manifest validation and guarded extraction.
-- [x] PRoot source build in CI pinned to a known revision; package runtime carrier libraries.
+- [x] PRoot source build in CI from upstream main branch; package runtime carrier libraries.
 - [x] GitHub Actions unit-test and release-variant build; SHA-256 output; uploaded artifact retention set to one day.
 - [ ] Complete the VT/xterm renderer (current compact renderer handles basic cursor addressing, erase, scroll and alternate screen but ignores SGR color/style and advanced protocols); test `nano`, `vim`, `less`, `top`, shell line editing, Unicode and paste.
 - [ ] Device-test the special-use foreground service, notification permission behavior, screen-off/background sessions, process limits and Android process reclaim; complete the required Play Console special-use FGS declaration.

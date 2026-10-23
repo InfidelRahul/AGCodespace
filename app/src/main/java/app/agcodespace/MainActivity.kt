@@ -64,8 +64,46 @@ private fun WorkspaceApp() {
     var installing by remember { mutableStateOf(false) }
     var installProgress by remember { mutableIntStateOf(0) }
     var installMessage by remember { mutableStateOf("Ubuntu ARM64 is not installed") }
+    val isBundled = remember { runtime.installer.isAssetBundled() }
     var currentPath by remember { mutableStateOf("/") }
     var error by remember { mutableStateOf<String?>(null) }
+
+    fun refreshStatus() {
+        installed = runtime.installer.isInstalled()
+    }
+
+    LaunchedEffect(page) {
+        refreshStatus()
+    }
+
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                refreshStatus()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    fun startInstall() {
+        installing = true
+        error = null
+        scope.launch {
+            try {
+                runtime.installer.install { message, percent ->
+                    installMessage = message
+                    installProgress = percent
+                }
+            } catch (t: Throwable) {
+                error = "Installation failed: ${t.message ?: t.javaClass.simpleName}"
+            } finally {
+                installing = false
+                refreshStatus()
+            }
+        }
+    }
     var terminalOutput by remember { mutableStateOf("AGCodespace · POSIX PTY\r\n") }
     val vtScreen = remember { VtScreen(48, 24).apply { feed("AGCodespace · native PTY\r\nUbuntu shell not started.\r\nInstall Ubuntu and package the PRoot runtime.\r\n") } }
     val utf8Decoder = remember { Utf8StreamDecoder() }
@@ -266,25 +304,58 @@ private fun WorkspaceApp() {
                         Text("Settings & diagnostics", fontSize = 24.sp, color = Color.White)
                         InfoCard("Device architecture", android.os.Build.SUPPORTED_ABIS.joinToString(), "This build packages the ARM64 PRoot runtime only.")
                         InfoCard("PRoot runtime", if (runtime.runtimeReady()) "Available" else "Missing", "Native libraries: ${context.applicationInfo.nativeLibraryDir}")
-                        InfoCard("Ubuntu source", "Official Ubuntu Base", "26.04 Resolute ARM64. The archive is checked against Ubuntu's published SHA256SUMS before extraction.")
+                        InfoCard("Ubuntu source", if (isBundled) "Bundled · Offline ready" else "Official Ubuntu Base", "26.04.1 LTS Resolute ARM64. The archive is checked against Ubuntu's published SHA256SUMS before extraction.")
+                        InfoCard("Ubuntu rootfs", if (installed) "Installed" else "Not installed", runtime.installer.rootfs.absolutePath)
+                        if (installed) {
+                            OutlinedButton(onClick = {
+                                runtime.installer.uninstall()
+                                refreshStatus()
+                            }, modifier = Modifier.fillMaxWidth()) {
+                                Text("Uninstall Ubuntu rootfs", color = Color(0xFFFF9494))
+                            }
+                        }
                         InfoCard("Runtime constraints", "Rootless userspace", "PRoot does not provide a real kernel, systemd/PID 1, kernel modules, or unrestricted mounts. Secret Service / D-Bus behavior may be limited in Android PRoot.")
                     }
                     else -> {
                         Text("Your Linux workspace", fontSize = 24.sp, color = Color.White)
                         Text("A persistent Ubuntu ARM64 userspace for Android, with a native PTY shell.", color = Muted, fontSize = 14.sp)
-                        InfoCard("Ubuntu ARM64", if (installed) "Installed" else "Needs setup", if (installed) "Root filesystem verified and available." else "Download and verify Ubuntu Base, then extract it into persistent app storage.")
+                        InfoCard("Ubuntu 26.04.1 LTS", if (installed) "Installed" else "Needs setup", if (installed) "Root filesystem verified and ready." else "Download and verify Ubuntu 26.04.1 LTS, then extract it into persistent app storage.")
                         if (installing) {
                             LinearProgressIndicator(progress = { installProgress / 100f }, modifier = Modifier.fillMaxWidth())
                             Text("$installProgress% · $installMessage", color = Muted, fontSize = 12.sp)
                         } else if (!installed) {
-                            Button(onClick = {
-                                installing = true; error = null
-                                scope.launch {
-                                    try { runtime.installer.install { message, percent -> installMessage = message; installProgress = percent }; installed = runtime.installer.isInstalled() }
-                                    catch (t: Throwable) { error = t.message ?: t.javaClass.simpleName }
-                                    finally { installing = false }
+                            if (isBundled) {
+                                Text("Bundled in app · Offline ready", color = Color(0xFF9CE5C8), fontSize = 12.sp)
+                            }
+                            Button(onClick = { startInstall() }, modifier = Modifier.fillMaxWidth(), enabled = !installing) {
+                                Text(if (isBundled) "Install Ubuntu 26.04.1 LTS (Offline)" else "Install Ubuntu 26.04.1 LTS")
+                            }
+                        } else {
+                            Surface(color = Color(0xFF1B332B), shape = RoundedCornerShape(14.dp)) {
+                                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text("✓", color = Color(0xFF9CE5C8), fontSize = 16.sp)
+                                        Text("Ubuntu 26.04.1 LTS is ready", color = Color(0xFF9CE5C8), fontSize = 14.sp)
+                                    }
+                                    Text("Persistent root filesystem is installed at ubuntu/rootfs. Launch a shell to start working.", color = Muted, fontSize = 12.sp)
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Button(onClick = { page = "Terminal" }, modifier = Modifier.weight(1f)) {
+                                            Text("Open terminal")
+                                        }
+                                        OutlinedButton(onClick = { startInstall() }) {
+                                            Text("Reinstall")
+                                        }
+                                    }
                                 }
-                            }, modifier = Modifier.fillMaxWidth(), enabled = !installing) { Text("Install Ubuntu ARM64") }
+                            }
+                        }
+                        error?.let { message ->
+                            Surface(color = Color(0xFF47272B), shape = RoundedCornerShape(12.dp)) {
+                                Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(message, color = Color(0xFFFFC6C9), modifier = Modifier.weight(1f), fontSize = 12.sp)
+                                    TextButton(onClick = { error = null }) { Text("Dismiss") }
+                                }
+                            }
                         }
                         InfoCard("Interactive terminal", if (terminalRunning) "Session active" else if (runtime.runtimeReady()) "Ready to start" else "Runtime not packaged", "Native POSIX PTY and PRoot shell. A complete VT renderer is needed for full-screen editors.")
                         InfoCard("Build pipeline", "GitHub Actions", "Pinned LinuxDroidapp/proot source build, Android unit tests, APK checksum, artifact upload retention: 1 day.")

@@ -10,7 +10,7 @@ class LinuxRuntime(context: Context) {
     fun runtimeReady(): Boolean = File(nativeDir, "libproot.so").canExecute() && File(nativeDir, "libproot_loader.so").isFile
     fun launchArgv(): Array<String> {
         check(installer.isInstalled()) { "Install Ubuntu before starting a Linux shell." }
-        check(runtimeReady()) { "The PRoot runtime is missing. Install/build the app through the GitHub Actions workflow so the pinned LinuxDroidapp/proot native runtime is packaged." }
+        check(runtimeReady()) { "The PRoot runtime is missing. Install/build the app through the GitHub Actions workflow so the LinuxDroidapp/proot native runtime is packaged." }
         val root = installer.rootfs.absolutePath
         val args = mutableListOf(
             File(nativeDir, "libproot.so").absolutePath,
@@ -29,5 +29,9 @@ class LinuxRuntime(context: Context) {
         pty.setEnv("PROOT_NO_SECCOMP", "1")
         pty.setEnv("LANG", "C.UTF-8")
         pty.setEnv("TERM", "xterm-256color")
+        pty.setEnv("HOME", "/root")
+        pty.setEnv("USER", "root")
+        pty.setEnv("SHELL", "/bin/bash")
+        pty.setEnv("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
     }
 }

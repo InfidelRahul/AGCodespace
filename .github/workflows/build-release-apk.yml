@@ -44,7 +44,7 @@ jobs:
           echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/30.0.16138531" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_VERSION=30.0.16138531" >> "$GITHUB_ENV"
 
-      - name: Build pinned LinuxDroidapp PRoot runtime from source
+      - name: Build LinuxDroidapp PRoot runtime from source
         run: scripts/build-proot-runtime.sh
 
       - name: Verify runtime package layout
